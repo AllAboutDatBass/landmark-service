@@ -1,0 +1,101 @@
+<%#
+#include <iostream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <stdexcept>
+#include <cppsp/common.H>
+#include <delegate.H>
+#include <dirent.h>
+#include <iostream>
+
+#include <string>
+#include <algorithm>
+#include <cctype>      // old <ctype.h>
+
+%>
+
+<%#
+bool isDots(char* dirName)
+{
+	return ((strcmp(dirName, ".") == 0) || (strcmp(dirName, "..") == 0));
+}
+%>
+
+<%$
+void init() {
+	doReadPost=true;
+}
+%>
+
+<html>
+	<head>
+		<title>Lat Lon</title>
+	</head>
+	<body>
+<h1>Lat / Lon<h1>
+
+<table border=1>
+<tr><td>Lat</td><td>Lon</td></tr>
+<%
+	// iterate through folder structure and display all defined landmarks:
+	std::string  xDirName ("/home/landmarks/coordinates");	
+
+	DIR* cDir = opendir(xDirName.c_str());
+
+	if(cDir != NULL) 
+	{
+
+		char yName[0xFF] = {0};
+
+		dirent* yEnt=(dirent*)yName;
+
+		while(readdir_r(cDir, (dirent*)yName, &yEnt)==0 && yEnt!=NULL) 
+		{
+			if(isDots(yEnt->d_name))
+				continue;
+			%>
+			<tr><td><b><%=htmlEscape(yEnt->d_name)%></b></td>
+			<%
+		
+			std::string  yDirName (xDirName);	
+
+			yDirName += "/";				
+			yDirName += yEnt->d_name;	
+		
+			DIR* yDir = opendir(yDirName.c_str());
+	
+			if(yDir != NULL) 
+			{
+
+				char xName[0xFF] = {0};
+
+				dirent* xEnt=(dirent*)xName;
+
+				while(readdir_r(yDir, (dirent*)xName, &xEnt)==0 && xEnt!=NULL) 
+				{
+					if(isDots(xEnt->d_name))
+						continue;
+
+					%>
+<td>					
+<a href="./view.cppsp?lat=<%=htmlEscape(yEnt->d_name)%>&lon=<%=htmlEscape(xEnt->d_name)%>"><%=htmlEscape(xEnt->d_name)%></a>
+</td>
+					<%		
+				}		
+			}
+
+			%>
+			</tr>
+			<%
+	
+			closedir(yDir);		
+		}
+	
+		closedir(cDir);
+	}
+%>
+</table>
+</html>
+
+	</body>
+

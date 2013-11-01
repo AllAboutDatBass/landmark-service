@@ -1,0 +1,242 @@
+<%#
+#include <iostream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <stdexcept>
+#include <cppsp/common.H>
+#include <delegate.H>
+#include <dirent.h>
+#include <iostream>
+#include <string>
+#include <fstream>
+#include <streambuf>
+
+#include <algorithm>
+#include <cctype>			 // old <ctype.h>
+
+%>
+
+<%#
+bool isDots(char* dirName)
+{
+	return ((strcmp(dirName, ".") == 0) || (strcmp(dirName, "..") == 0));
+}
+
+bool isNegative(string* pString, bool scrub = false)
+{
+	size_t found = pString->find('-');
+
+	bool isNeg = (found != string::npos);
+
+	if (isNeg && scrub)	
+	{
+		pString->replace(found, 1, " ");
+	}
+	
+	return isNeg;
+}
+
+bool convertToFixed(string& strNumber)
+{
+	size_t found = strNumber.rfind('.');
+
+	bool foundPoint = (found != string::npos);
+
+	size_t digits = 4;
+
+	if (foundPoint)	
+	{
+		digits = (strNumber.size() - found - 1);
+
+		strNumber.erase(found, 1);
+
+		if (digits > 4)
+		{
+			return false;
+		}
+	}	
+	
+	size_t implicitDigits = 4 - digits;			
+	
+	for (size_t implicitDigit = 0; implicitDigit < implicitDigits; implicitDigit++)
+	{
+		strNumber += "0";	
+	}			
+
+	return true;	
+}
+
+void convertToCoord(string& strNumber, int64_t nNumber)
+{
+	char aNumber[16];
+
+	sprintf(aNumber, "%.5d", nNumber); 
+
+	strNumber = aNumber;	
+
+	size_t pointPos = (strNumber.size() - 4);
+
+	strNumber.insert(pointPos, ".");
+}
+
+bool validLat(int64_t nNumber)
+{
+	if (nNumber > 900000)
+	{
+		return false; 
+	}
+	else if (nNumber < -900000)
+	{
+		return false; 
+	}
+	else
+	{
+		return true;
+	}
+}
+
+// wrap across the 180 line:
+int64_t toLon(int64_t nNumber)
+{
+	if (nNumber >= 1800000)
+	{
+		return (nNumber - 3600000); 
+	}
+	else if (nNumber < -1800000)
+	{
+		return (nNumber + 3600000); 
+	}
+	else
+	{
+		return nNumber;
+	}
+}
+%>
+
+<%$
+void init() {
+	doReadPost=true;
+}
+%>
+
+<html>
+	<head>
+		<title>landmarks</title>
+	</head>
+	<body>
+<h1>Landmarks at:</h1>
+<table border="1">
+
+<%
+std::string  lat ("");	
+std::string  lon ("");	
+std::string  latName ("lat");	
+std::string  lonName ("lon");
+
+for (auto it=request->queryString.begin();it!=request->queryString.end();it++) 
+{
+	if ((*it).first.toSTDString().compare(latName) == 0)
+	{
+		lat = (*it).second.toSTDString();
+	}
+	
+	if ((*it).first.toSTDString().compare(lonName) == 0)
+	{
+		lon = (*it).second.toSTDString();
+	}
+}
+
+bool isValidLat = convertToFixed(lat);
+bool isValidLon = convertToFixed(lon);
+
+int64_t nLat = atol(lat.c_str());
+int64_t nLon = atol(lon.c_str());
+
+convertToCoord(lat, nLat);	
+convertToCoord(lon, toLon(nLon));	
+
+%>
+<tr>
+	<td<%= isNegative(&lat) ? htmlEscape(" bgcolor=\"#FF7777\"") : htmlEscape(" bgcolor=\"#77FF77\"") %>><%=htmlEscape(latName)%></td>
+	<td<%= isValidLat ? htmlEscape(" bgcolor=\"#77FF77\"") : htmlEscape(" bgcolor=\"#FF7777\"") %>><%=htmlEscape(lat)%></td>
+</tr><tr>
+	<td<%= isNegative(&lon) ? htmlEscape(" bgcolor=\"#FF7777\"") : htmlEscape(" bgcolor=\"#77FF77\"") %>><%=htmlEscape(lonName)%></td>
+	<td<%= isValidLon ? htmlEscape(" bgcolor=\"#77FF77\"") : htmlEscape(" bgcolor=\"#FF7777\"") %>><%=htmlEscape(lon)%></td>
+</tr>
+</table>
+<p/>
+<%
+		
+	// iterate through and return all of the landmarks present at a specific lat/lon coordinate pair:
+	
+	std::string  xDirName ("/home/landmarks/coordinates/");	
+
+	xDirName += lat;	
+
+	DIR* cDir = opendir(xDirName.c_str());
+
+	if (cDir != NULL)  
+	{
+		std::string  yDirName (xDirName);	
+
+		yDirName += "/";				
+		yDirName += lon;	
+
+		DIR* yDir = opendir(yDirName.c_str());
+
+		if(yDir != NULL) 
+		{
+%>
+		<iframe 
+			width="360" 
+			height="360" 
+			frameborder="0" 
+			scrolling="no" 
+			marginheight="0" 
+			marginwidth="0" 
+			src="https://maps.google.com/maps?q=<%=htmlEscape(lat)%>+<%=htmlEscape(lon)%>&amp;ie=UTF8&amp;t=h&amp;z=16&amp;output=embed">
+		</iframe>
+<%
+			char xName[0xFF] = {0};
+
+			dirent* xEnt=(dirent*)xName;
+
+			while(readdir_r(yDir, (dirent*)xName, &xEnt)==0 && xEnt!=NULL) 
+			{
+				if(isDots(xEnt->d_name))
+					continue;
+
+				std::string	 iFilePath ("/home/landmarks/items/");		
+				iFilePath += xEnt->d_name;
+			
+				std::ifstream t(iFilePath.c_str());
+			
+				if (t)
+				{
+					std::string landmarkText ("");
+
+					t.seekg(0, std::ios::end);   
+					landmarkText.reserve(t.tellg());
+					t.seekg(0, std::ios::beg);
+
+					landmarkText.assign((std::istreambuf_iterator<char>(t)),
+					            std::istreambuf_iterator<char>());
+
+					%>
+					<p><%=htmlEscape(landmarkText)%>(<%=htmlEscape(lat)%>&ordm;, <%=htmlEscape(lon)%>&ordm;)</p>
+					<%		
+
+				}
+			}
+			
+			closedir(yDir);		
+		}
+	
+		closedir(cDir);
+	}
+%>
+
+</html>
+
+	</body>
+
